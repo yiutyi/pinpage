@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "toolbar",
+  "description": "仅允许受信任工具条调用导航与桌面映射动作并订阅自身状态事件，内容 WebView 不持有这些权限。",
+  "webviews": ["bar-*"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten", "allow-toolbar-action"]
+}

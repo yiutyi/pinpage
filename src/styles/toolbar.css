@@ -1,0 +1,394 @@
+/* 功能：居中工具条的深色紧凑样式，尺寸与原生窗口常量保持一致。 */
+:root {
+  color-scheme: dark;
+  font-family:
+    'Microsoft YaHei',
+    'Segoe UI',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+}
+
+html,
+body,
+#toolbar {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.toolbar-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(24, 28, 36, 0.94);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  animation: toolbar-in 0.18s ease-out;
+}
+
+@keyframes toolbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toolbar-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+  max-width: 520px;
+}
+
+.toolbar-tab {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  min-width: 0;
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.toolbar-tab.active {
+  background: rgba(96, 165, 250, 0.28);
+}
+
+.toolbar-tab-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: rgba(240, 244, 250, 0.86);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.toolbar-tab.active .toolbar-tab-main {
+  color: #eaf3ff;
+}
+
+.toolbar-tab-close {
+  display: flex;
+  flex: 0 0 18px;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  margin-right: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(240, 244, 250, 0.55);
+  cursor: pointer;
+}
+
+.toolbar-tab-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.toolbar-tab-close .toolbar-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.toolbar-group {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-btn {
+  display: flex;
+  flex: 0 0 30px;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(240, 244, 250, 0.86);
+  cursor: pointer;
+}
+
+.toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.toolbar-btn:focus-visible {
+  outline: 2px solid #7db3ff;
+  outline-offset: 1px;
+}
+
+.toolbar-btn.active {
+  background: rgba(96, 165, 250, 0.3);
+  color: #d5e8ff;
+}
+
+.toolbar-btn.toolbar-subtle {
+  color: rgba(240, 244, 250, 0.6);
+}
+
+.toolbar-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.toolbar-sep {
+  flex: 0 0 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.toolbar-text {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f3f6fa;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toolbar-text:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.toolbar-text.toolbar-danger {
+  border-color: rgba(248, 113, 113, 0.7);
+  color: #fecaca;
+}
+
+.toolbar-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #f3f6fa;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.toolbar-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: rgba(78, 26, 26, 0.97);
+  color: #ffe4e4;
+  font-size: 12px;
+}
+
+.toolbar-error span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.toolbar-error .toolbar-text {
+  flex: 0 0 auto;
+}
+
+/* 左右停靠：宽度完全交给原生窗口（48px），CSS 不叠加横向留白。
+   标签条吃掉按钮区之外的剩余高度，各标签平分；不滚动、不撑高窗口。 */
+.toolbar-shell.toolbar-left,
+.toolbar-shell.toolbar-right {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 8px 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* 没有标签条时按钮组垂直居中，避免固定高度下全部挤在顶部。 */
+.toolbar-shell.toolbar-left:not(:has(.toolbar-tabs)),
+.toolbar-shell.toolbar-right:not(:has(.toolbar-tabs)) {
+  justify-content: center;
+}
+
+.toolbar-left .toolbar-group,
+.toolbar-right .toolbar-group {
+  width: 100%;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-left .toolbar-tabs,
+.toolbar-right .toolbar-tabs {
+  width: 100%;
+  max-width: none;
+  flex: 1 1 auto;
+  min-height: 96px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* 每个标签是一张独立卡片：圆角 + 间距，避免两个标签糊成一条。 */
+.toolbar-left .toolbar-tab,
+.toolbar-right .toolbar-tab {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  height: auto;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+  transition: background 120ms ease;
+}
+
+.toolbar-left .toolbar-tab:hover,
+.toolbar-right .toolbar-tab:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.toolbar-left .toolbar-tab.active,
+.toolbar-right .toolbar-tab.active {
+  background: rgba(96, 165, 250, 0.3);
+}
+
+/* 当前标签左侧亮条：窄条里靠颜色+位置双重标识。 */
+.toolbar-left .toolbar-tab.active::before,
+.toolbar-right .toolbar-tab.active::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: #60a5fa;
+}
+
+.toolbar-left .toolbar-tab-main,
+.toolbar-right .toolbar-tab-main {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 8px 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.5px;
+  text-align: center;
+  white-space: nowrap;
+  /* 竖排标题超出时按列裁断，末尾渐隐代替省略号，避免每列都挂一个「…」。 */
+  text-overflow: clip;
+  -webkit-mask-image: linear-gradient(to bottom, #000 86%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 86%, transparent 100%);
+}
+
+/* 有关闭按钮的标签在底部留出按钮位置，标题不压在按钮上。 */
+.toolbar-left .toolbar-tab:has(.toolbar-tab-close) .toolbar-tab-main,
+.toolbar-right .toolbar-tab:has(.toolbar-tab-close) .toolbar-tab-main {
+  padding: 8px 0 22px;
+}
+
+.toolbar-left .toolbar-tab-close,
+.toolbar-right .toolbar-tab-close {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  opacity: 0.45;
+  background: rgba(15, 18, 24, 0.72);
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.toolbar-left .toolbar-tab:hover .toolbar-tab-close,
+.toolbar-right .toolbar-tab:hover .toolbar-tab-close,
+.toolbar-left .toolbar-tab.active .toolbar-tab-close,
+.toolbar-right .toolbar-tab.active .toolbar-tab-close {
+  opacity: 1;
+  background: rgba(15, 18, 24, 0.92);
+}
+
+/* 关闭按钮自身的悬停态放在最后，优先级压过上面的常显规则。 */
+.toolbar-left .toolbar-tab-close:hover,
+.toolbar-right .toolbar-tab-close:hover {
+  opacity: 1;
+  background: #ef4444;
+  color: #fff;
+}
+
+.toolbar-left .toolbar-sep,
+.toolbar-right .toolbar-sep {
+  width: 56%;
+  height: 1px;
+  flex: 0 0 1px;
+  margin: 4px 0;
+}
+
+.toolbar-left .toolbar-text,
+.toolbar-right .toolbar-text {
+  font-size: 11px;
+  padding: 3px 0;
+}
+
+.toolbar-left .toolbar-error,
+.toolbar-right .toolbar-error {
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}

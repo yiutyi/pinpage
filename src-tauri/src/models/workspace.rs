@@ -1,5 +1,5 @@
 // 功能：定义全局设置、窗口手势修饰键及严格输入与容错配置的转换契约。
-use super::{LocalePreference, PinConfig, WindowPreset};
+use super::{LocalePreference, PinConfig, ToolbarPosition, WindowPreset};
 use crate::errors::AppMessage;
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +27,9 @@ pub struct Settings {
     #[serde(deserialize_with = "lenient_gesture_modifier")]
     pub gesture_modifier: GestureModifier,
     pub restore_session: bool,
+    /// 工具条停靠位置；旧配置缺失时回退顶部。
+    #[serde(default)]
+    pub toolbar_position: ToolbarPosition,
     /// 本机控制默认开启；只允许受信任工作台修改，CLI 不能自启权限。
     pub local_control: bool,
     /// 自动化安装的持久去重映射，不随页面包导出。
@@ -91,6 +94,7 @@ impl Default for Settings {
             locale: LocalePreference::default(),
             gesture_modifier: GestureModifier::default(),
             restore_session: true,
+            toolbar_position: ToolbarPosition::default(),
             local_control: true,
             automation_clients: Default::default(),
             site_commits: Default::default(),
@@ -108,6 +112,8 @@ pub struct SettingsInput {
     /// 不使用磁盘配置的容错规则，避免错误输入被静默保存为 Ctrl。
     pub gesture_modifier: String,
     pub restore_session: bool,
+    #[serde(default)]
+    pub toolbar_position: String,
 }
 
 /// 全局设置的可编辑部分，不包含页面配置。
@@ -116,6 +122,7 @@ pub struct WorkspaceSettings {
     pub locale: LocalePreference,
     pub gesture_modifier: GestureModifier,
     pub restore_session: bool,
+    pub toolbar_position: ToolbarPosition,
 }
 
 impl WorkspaceSettings {
@@ -133,10 +140,18 @@ impl WorkspaceSettings {
             "disabled" => GestureModifier::Disabled,
             _ => return Err(AppMessage::new("errors.gestureModifierInvalid")),
         };
+        // 旧前端不提交此字段时保持顶部，避免升级后无法保存其它设置。
+        let toolbar_position = match input.toolbar_position.as_str() {
+            "" | "top" => ToolbarPosition::Top,
+            "left" => ToolbarPosition::Left,
+            "right" => ToolbarPosition::Right,
+            _ => return Err(AppMessage::new("errors.toolbarPositionInvalid")),
+        };
         Ok(Self {
             locale,
             gesture_modifier,
             restore_session: input.restore_session,
+            toolbar_position,
         })
     }
 
@@ -146,6 +161,7 @@ impl WorkspaceSettings {
             locale: settings.locale,
             gesture_modifier: settings.gesture_modifier,
             restore_session: settings.restore_session,
+            toolbar_position: settings.toolbar_position,
         }
     }
 }

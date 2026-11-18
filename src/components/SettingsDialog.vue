@@ -58,6 +58,14 @@ const languageOptions = computed(
       { value: 'system', label: t('ui.settings.languageSystem') },
     ] as const,
 );
+const toolbarPositionOptions = computed(
+  () =>
+    [
+      { value: 'top', label: t('ui.settings.toolbarTop') },
+      { value: 'left', label: t('ui.settings.toolbarLeft') },
+      { value: 'right', label: t('ui.settings.toolbarRight') },
+    ] as const,
+);
 const gestureModifierOptions = computed(
   () =>
     [
@@ -72,6 +80,7 @@ function normalized(value: SettingsInput): SettingsInput {
     locale: value.locale,
     gestureModifier: value.gestureModifier,
     restoreSession: value.restoreSession,
+    toolbarPosition: value.toolbarPosition ?? 'top',
   };
 }
 const current = computed(() => normalized(input));
@@ -229,6 +238,13 @@ function save() {
             class="settings-section"
             :aria-label="t('ui.settings.navControls')"
           >
+            <AppSelect
+              v-model="input.toolbarPosition"
+              :label="t('ui.settings.toolbarPosition')"
+              :options="toolbarPositionOptions"
+              :disabled="busy"
+            />
+            <p class="settings-hint">{{ t('ui.settings.toolbarHint') }}</p>
             <template v-if="capabilities.windowGestures">
               <AppSelect
                 v-model="input.gestureModifier"

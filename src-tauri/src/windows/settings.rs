@@ -39,6 +39,9 @@ pub(super) fn apply(
 ) -> Result<(), AppMessage> {
     // 关闭的页面没有原生窗口，也必须在这里拦截非法能力，不能只依赖 apply 的窗口分支。
     crate::platform::validate_pin(crate::platform::capabilities(), &next)?;
+    if next.mode != previous.mode {
+        super::lift::forget(app, &next.id);
+    }
     if let Some(window) = app.get_webview_window(&next.id) {
         if let Err(error) = crate::platform::apply(&window, &next) {
             if let Err(rollback) = crate::platform::apply(&window, previous) {
@@ -71,6 +74,9 @@ pub(super) fn apply(
     if let Some(window) = app.get_webview_window(&next.id) {
         super::events::capture(&window);
     }
+    super::tabs::apply_group(app, &next);
+    super::toolbar::sync(app, &next.id);
+    super::lift::notify(app);
     state::schedule_save(app);
     state::notify(app);
     crate::tray::refresh_or_report(app);

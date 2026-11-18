@@ -170,7 +170,12 @@
     "gestureCtrl": "Ctrl（左右均可）",
     "gestureShift": "Shift（左右均可）",
     "gestureDisabled": "关闭",
-    "gestureHint": "直接右键打开窗口菜单；按住修饰键后，左键拖动未锁定的无边框窗口。"
+    "gestureHint": "直接右键打开窗口菜单；按住修饰键后，左键拖动未锁定的无边框窗口。",
+    "toolbarPosition": "工具条位置",
+    "toolbarTop": "顶部",
+    "toolbarLeft": "左侧",
+    "toolbarRight": "右侧",
+    "toolbarHint": "工具条停靠在页面边缘，可从该侧热区唤出"
   },
   "toast": {
     "exportedWithData": "已导出 {count} 个文件，页面数据 {size}：{path}",
@@ -311,5 +316,28 @@
     "unchanged": "已是当前版本，无需更改",
     "inspected": "目录版本已读取",
     "resultVersion": "版本：{version}"
+  },
+  "toolbar": {
+    "aria": "页面工具条",
+    "tabs": "标签页",
+    "tabClose": "关闭标签页",
+    "back": "后退",
+    "forward": "前进",
+    "home": "主页",
+    "recycle": "回收站",
+    "restart": "重启",
+    "shutdown": "关机",
+    "confirm": "确认",
+    "cancel": "取消",
+    "shutdownConfirm": "30 秒后关机，确认？",
+    "restartConfirm": "30 秒后重启，确认？",
+    "pending": "还有 {seconds} 秒，可撤销",
+    "undo": "撤销",
+    "backToList": "返回",
+    "pin": "固定工具条",
+    "unpin": "取消固定（自动隐藏）",
+    "summon": "唤出到前台",
+    "recall": "收回桌面",
+    "hide": "收起工具条（不影响页面）"
   }
 }

@@ -170,7 +170,12 @@
     "gestureCtrl": "Ctrl (either side)",
     "gestureShift": "Shift (either side)",
     "gestureDisabled": "Off",
-    "gestureHint": "A plain right-click opens the window menu; hold the modifier to left-drag an unlocked borderless window."
+    "gestureHint": "A plain right-click opens the window menu; hold the modifier to left-drag an unlocked borderless window.",
+    "toolbarPosition": "Toolbar position",
+    "toolbarTop": "Top",
+    "toolbarLeft": "Left",
+    "toolbarRight": "Right",
+    "toolbarHint": "Toolbar docks at the page edge; hover that edge to reveal it"
   },
   "toast": {
     "exportedWithData": "Exported {count} file, page data {size}: {path} | Exported {count} files, page data {size}: {path}",
@@ -311,5 +316,28 @@
     "unchanged": "Already up to date",
     "inspected": "Folder version retrieved",
     "resultVersion": "Version: {version}"
+  },
+  "toolbar": {
+    "aria": "Page toolbar",
+    "tabs": "Tabs",
+    "tabClose": "Close tab",
+    "back": "Back",
+    "forward": "Forward",
+    "home": "Home",
+    "recycle": "Bin",
+    "restart": "Restart",
+    "shutdown": "Shut down",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "shutdownConfirm": "Shut down in 30 seconds?",
+    "restartConfirm": "Restart in 30 seconds?",
+    "pending": "{seconds} seconds left, undo available",
+    "undo": "Undo",
+    "backToList": "Back",
+    "pin": "Pin toolbar",
+    "unpin": "Unpin (auto-hide)",
+    "summon": "Bring to front",
+    "recall": "Return to desktop",
+    "hide": "Hide toolbar (page stays put)"
   }
 }

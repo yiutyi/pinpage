@@ -4,8 +4,12 @@ pub(crate) mod editor;
 mod events;
 mod geometry;
 pub(crate) mod limits;
+pub(crate) mod navigation;
 pub(crate) mod presets;
 mod settings;
+pub(crate) mod lift;
+pub(crate) mod tabs;
+pub(crate) mod toolbar;
 pub use actions::action;
 pub use settings::update;
 
@@ -32,6 +36,50 @@ pub fn ensure_manager(window: &WebviewWindow) -> Result<(), AppMessage> {
         return Err(AppMessage::new("errors.notManager"));
     }
     Ok(())
+}
+
+/// 应用内本地界面的统一导航校验：管理页与工具条共用。
+pub(crate) fn app_navigation(url: &url::Url) -> bool {
+    manager_navigation(url) || url.scheme() == "tauri"
+}
+
+/// 窗口标签是否对应一个真实的磁贴首页；额外标签不是配置记录。
+pub(crate) fn is_pin(app: &AppHandle, id: &str) -> bool {
+    app.state::<AppState>()
+        .settings
+        .lock()
+        .unwrap()
+        .pins
+        .iter()
+        .any(|pin| pin.id == id)
+}
+
+/// 读取磁贴的持久化配置。
+pub fn pin_config(app: &AppHandle, id: &str) -> Result<PinConfig, AppMessage> {
+    app.state::<AppState>()
+        .settings
+        .lock()
+        .unwrap()
+        .pins
+        .iter()
+        .find(|pin| pin.id == id)
+        .cloned()
+        .ok_or_else(|| AppMessage::new("errors.pinNotFound"))
+}
+
+/// 页面关闭时重置工具条临时状态，保留用户图钉偏好。
+pub(crate) fn state_reset_for_close(app: &AppHandle, id: &str) {
+    crate::state::reset_toolbar_runtime(app, id);
+}
+
+/// 建窗失败时把磁贴标记为未打开；标签没有配置记录，不需要回写运行态。
+fn mark_closed(app: &AppHandle, pin: &PinConfig, home: bool) {
+    if !home {
+        return;
+    }
+    if let Some(runtime) = app.state::<AppState>().runtime.lock().unwrap().get_mut(&pin.id) {
+        runtime.open = false;
+    }
 }
 
 /// 内容页命令的身份校验：标签必须对应现存页面记录，并返回其配置。
@@ -191,58 +239,47 @@ pub fn navigate(app: &AppHandle, id: &str, url: url::Url) -> Result<(), AppMessa
     Ok(())
 }
 
-/// 创建一个内容 WebView，来源校验与资源授权在窗口创建前完成。
-pub fn open_pin(app: &AppHandle, pin: &PinConfig) -> Result<(), AppMessage> {
-    let state = app.state::<AppState>();
-    state.ensure_mutable()?;
-    crate::platform::validate_pin(crate::platform::capabilities(), pin)?;
-    if let Some(window) = app.get_webview_window(&pin.id) {
-        window
-            .show()
-            .map_err(|error| AppMessage::new("errors.windowApplyFailed").detail(error))?;
-        if pin.mode == crate::models::WindowMode::Floating {
-            window
-                .set_focus()
-                .map_err(|error| AppMessage::new("errors.windowApplyFailed").detail(error))?;
-        }
-        return Ok(());
-    }
-    let url = initial_url(app, pin)?;
-    crate::automation::begin_load(app, &pin.id);
-    #[cfg(windows)]
-    state.appearances.lock().unwrap().remove(&pin.id);
+/// 创建一个内容 WebView；首页与标签共用同一套权限与导航桥。
+pub(crate) fn create_page(
+    app: &AppHandle,
+    pin: &PinConfig,
+    home: &url::Url,
+    is_home: bool,
+) -> Result<WebviewWindow, AppMessage> {
+    let start = if is_home {
+        home.clone()
+    } else {
+        content::source_url(&pin.id, &pin.source)?
+    };
     let navigation_id = pin.id.clone();
     let navigation_app = app.clone();
+    let navigation_home = is_home;
+    let navigation_source = pin.source.clone();
     let popup_app = app.clone();
-    state.runtime.lock().unwrap().insert(
-        pin.id.clone(),
-        PinRuntime {
-            open: true,
-            visible: true,
-            loading: true,
-            current_url: url.to_string(),
-            error: None,
-        },
-    );
+    let popup_id = pin.id.clone();
+    let popup_source = pin.source.clone();
+    let script = navigation::script(home, is_home);
     let (width, height) = limits::clamp_size(pin.width, pin.height);
-    let builder = WebviewWindowBuilder::new(app, &pin.id, WebviewUrl::External(url))
+    let builder = WebviewWindowBuilder::new(app, &pin.id, WebviewUrl::External(start))
         .title(window_title(app, &pin.name))
         .inner_size(width, height)
         .min_inner_size(limits::MIN_WIDTH, limits::MIN_HEIGHT)
         .resizable(!pin.size_locked)
-        // 悬浮页通过托盘和管理界面访问，避免多个页面占用任务栏。
         .skip_taskbar(true)
         .always_on_top(pin.mode == crate::models::WindowMode::Floating && pin.always_on_top)
         .decorations(pin.effective_decorations())
         .shadow(pin.effective_decorations())
-        // 透明能力在创建时准备好；之后仅切换 WebView2 底色，不销毁页面运行态。
         .transparent(cfg!(windows))
-        // 桌面挂载后成为子窗口，不能依赖顶层窗口的 DWM 透明；避免宿主位图铺出黑底。
         .no_redirection_bitmap(cfg!(windows))
         .visible(false)
         .disable_drag_drop_handler()
+        .initialization_script(script)
         .on_navigation(move |url| {
-            let allowed = navigation_allowed_now(&navigation_app, &navigation_id, url);
+            let allowed = if navigation_home {
+                navigation_allowed_now(&navigation_app, &navigation_id, url)
+            } else {
+                content::navigation_allowed(&navigation_id, &navigation_source, url)
+            };
             if !allowed {
                 events::set_error(
                     &navigation_app,
@@ -253,9 +290,20 @@ pub fn open_pin(app: &AppHandle, pin: &PinConfig) -> Result<(), AppMessage> {
             allowed
         })
         .on_new_window(move |url, _| {
-            if matches!(url.scheme(), "http" | "https")
-                && !url.host_str().unwrap_or("").starts_with("pinpage.")
+            if content::is_local_url(&url) || content::same_host(&navigation_source_url(&popup_source), &url)
+                || content::same_host(
+                    &app_url(&popup_app, &popup_id).unwrap_or_else(|| navigation_source_url(&popup_source)),
+                    &url,
+                )
             {
+                let app = popup_app.clone();
+                let id = popup_id.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = tabs::open(&app, &id, url) {
+                        state::report(&app, error);
+                    }
+                });
+            } else if content::external_url(&url) {
                 if let Err(error) = popup_app.opener().open_url(url.as_str(), None::<&str>) {
                     state::report(
                         &popup_app,
@@ -267,19 +315,17 @@ pub fn open_pin(app: &AppHandle, pin: &PinConfig) -> Result<(), AppMessage> {
         })
         .on_page_load(events::page_load)
         .on_document_title_changed(move |window, title| {
-            // 网页标题只影响系统标题栏，用户设置的名称保持稳定。
             let text: String = title.chars().take(100).collect();
             let title = window_title(window.app_handle(), &text);
             let _ = window.set_title(&title);
+            tabs::set_title(window.app_handle(), window.label(), &text);
         });
     let window = match builder.build() {
         Ok(window) => window,
         Err(error) => {
             let message = AppMessage::new("errors.createWindowFailed").detail(error);
             events::set_error(app, &pin.id, message.clone());
-            if let Some(runtime) = state.runtime.lock().unwrap().get_mut(&pin.id) {
-                runtime.open = false;
-            }
+            mark_closed(app, pin, is_home);
             return Err(message);
         }
     };
@@ -299,13 +345,68 @@ pub fn open_pin(app: &AppHandle, pin: &PinConfig) -> Result<(), AppMessage> {
     if let Err(error) = setup {
         let _ = window.destroy();
         #[cfg(windows)]
-        state.appearances.lock().unwrap().remove(&pin.id);
+        app.state::<AppState>().appearances.lock().unwrap().remove(&pin.id);
         events::set_error(app, &pin.id, error.clone());
-        if let Some(runtime) = state.runtime.lock().unwrap().get_mut(&pin.id) {
-            runtime.open = false;
-        }
+        mark_closed(app, pin, is_home);
         return Err(error);
     }
+    crate::platform::suppress_context_menu(&window);
+    events::attach(&window);
+    Ok(window)
+}
+
+/// 从来源配置得到用于同站判定的地址；非 URL 来源回退为本地回环。
+fn navigation_source_url(source: &PageSource) -> url::Url {
+    match source {
+        PageSource::Url { url } => url::Url::parse(url).unwrap_or_else(|_| {
+            url::Url::parse("http://localhost/").expect("固定地址可解析")
+        }),
+        PageSource::Bundled { .. } => {
+            url::Url::parse("http://localhost/").expect("固定地址可解析")
+        }
+    }
+}
+
+/// 读取内容窗口当前地址，作为同站判定的补充来源。
+fn app_url(app: &AppHandle, id: &str) -> Option<url::Url> {
+    app.get_webview_window(id)
+        .and_then(|window| window.url().ok())
+        .and_then(|url| url::Url::parse(&url.to_string()).ok())
+}
+
+/// 创建一个内容 WebView，来源校验与资源授权在窗口创建前完成。
+pub fn open_pin(app: &AppHandle, pin: &PinConfig) -> Result<(), AppMessage> {
+    let state = app.state::<AppState>();
+    state.ensure_mutable()?;
+    crate::platform::validate_pin(crate::platform::capabilities(), pin)?;
+    if let Some(window) = app.get_webview_window(&pin.id) {
+        window
+            .show()
+            .map_err(|error| AppMessage::new("errors.windowApplyFailed").detail(error))?;
+        if pin.mode == crate::models::WindowMode::Floating {
+            window
+                .set_focus()
+                .map_err(|error| AppMessage::new("errors.windowApplyFailed").detail(error))?;
+        }
+        toolbar::open(app, pin);
+        let _ = tabs::activate(app, &pin.id, &pin.id);
+        return Ok(());
+    }
+    let url = initial_url(app, pin)?;
+    crate::automation::begin_load(app, &pin.id);
+    #[cfg(windows)]
+    state.appearances.lock().unwrap().remove(&pin.id);
+    state.runtime.lock().unwrap().insert(
+        pin.id.clone(),
+        PinRuntime {
+            open: true,
+            visible: true,
+            loading: true,
+            current_url: url.to_string(),
+            error: None,
+        },
+    );
+    create_page(app, pin, &url, true)?;
     if let Some(saved) = state
         .settings
         .lock()
@@ -316,8 +417,7 @@ pub fn open_pin(app: &AppHandle, pin: &PinConfig) -> Result<(), AppMessage> {
     {
         saved.enabled = true;
     }
-    crate::platform::suppress_context_menu(&window);
-    events::attach(&window);
+    toolbar::open(app, pin);
     events::watch_load(app, &pin.id);
     state::notify(app);
     Ok(())

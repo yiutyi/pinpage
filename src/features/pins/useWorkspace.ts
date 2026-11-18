@@ -25,6 +25,7 @@ function emptySnapshot(): Snapshot {
       locale: 'zh-CN',
       gestureModifier: 'ctrl',
       restoreSession: true,
+      toolbarPosition: 'top',
       pins: [],
     },
     runtime: {},

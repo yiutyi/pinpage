@@ -193,6 +193,15 @@
     "presetConflict": "Preset {id} differs from the existing preset; review it before choosing replace",
     "windowUndoExpired": "The window changed again. This earlier adjustment can no longer be undone.",
     "automationFailed": "Local control or skill operation failed; check the details",
-    "navigationFailed": "Page navigation failed: {reason}"
+    "navigationFailed": "Page navigation failed: {reason}",
+    "toolbarOpenFailed": "The toolbar could not be created",
+    "toolbarNotAuthorized": "This window is not allowed to run toolbar actions",
+    "tabLimit": "At most {max} tabs can be open; close one first",
+    "tabNotFound": "That tab no longer exists",
+    "tabNotAuthorized": "This page cannot open a tab",
+    "tabHomeClose": "The home tab cannot be closed",
+    "desktopActionConfirm": "Confirm the shutdown or restart first",
+    "desktopActionFailed": "The desktop action could not be run",
+    "toolbarPositionInvalid": "Invalid toolbar position"
   }
 }

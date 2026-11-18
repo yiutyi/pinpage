@@ -18,6 +18,7 @@ pub async fn update_settings(
     let state_ref = app.state::<AppState>();
     // 与管理窗口内的开关、样式切换共用操作锁，避免保存语言时覆盖并发窗口状态。
     let _operation = state_ref.operation.lock().unwrap();
+    let previous_position = state_ref.settings.lock().unwrap().toolbar_position;
     state_ref.ensure_mutable()?;
     save_transaction(
         &state_ref,
@@ -29,6 +30,10 @@ pub async fn update_settings(
     )?;
     // 仅保存成功后发布手势，且在操作锁内发布，避免并发保存使原生状态次序反转。
     crate::platform::set_gesture_modifier(candidate.gesture_modifier);
+    // 停靠位置改变后，逐条重设尺寸并贴到新边缘；已打开的旧窗口不会保留在旧位置。
+    if candidate.toolbar_position != previous_position {
+        windows::toolbar::relayout_all(&app);
+    }
     drop(_operation);
 
     // 持久化成功后才发布新语言，回滚时界面继续显示原语言。
@@ -97,6 +102,7 @@ fn apply(state: &AppState, values: &WorkspaceSettings) {
     settings.locale = values.locale;
     settings.gesture_modifier = values.gesture_modifier;
     settings.restore_session = values.restore_session;
+    settings.toolbar_position = values.toolbar_position;
 }
 
 /// 按新的有效语言刷新托盘和管理窗口标题；操作锁已释放，菜单重建不会与状态读取相互等待。

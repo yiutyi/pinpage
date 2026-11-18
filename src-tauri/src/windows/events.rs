@@ -143,8 +143,19 @@ pub fn attach(window: &WebviewWindow) {
             }
             WindowEvent::Moved(_)
             | WindowEvent::Resized(_)
-            | WindowEvent::ScaleFactorChanged { .. } => capture(&handle),
+            | WindowEvent::ScaleFactorChanged { .. } => {
+                capture(&handle);
+                super::toolbar::sync(app, handle.label());
+                super::tabs::record_geometry(app, handle.label());
+            }
+            WindowEvent::Focused(true) => super::toolbar::front(app, handle.label()),
             WindowEvent::Destroyed => {
+                super::tabs::forget(app, handle.label());
+                super::lift::forget(app, handle.label());
+                if super::is_pin(app, handle.label()) {
+                    super::toolbar::close(app, handle.label());
+                    super::state_reset_for_close(app, handle.label());
+                }
                 crate::automation::load_error(
                     app,
                     handle.label(),

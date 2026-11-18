@@ -193,6 +193,15 @@
     "presetConflict": "预设 {id} 与已有内容不同，请检查后明确选择替换",
     "windowUndoExpired": "窗口已再次调整，无法撤销这条旧操作",
     "automationFailed": "本机控制或技能操作失败，请检查详情",
-    "navigationFailed": "页面导航失败：{reason}"
+    "navigationFailed": "页面导航失败：{reason}",
+    "toolbarOpenFailed": "工具条创建失败",
+    "toolbarNotAuthorized": "此窗口无权执行工具条动作",
+    "tabLimit": "最多同时打开 {max} 个标签，请先关闭不用的标签",
+    "tabNotFound": "标签已不存在",
+    "tabNotAuthorized": "不能从这个页面打开标签",
+    "tabHomeClose": "首页标签不能关闭",
+    "desktopActionConfirm": "请先确认关机或重启操作",
+    "desktopActionFailed": "桌面动作执行失败",
+    "toolbarPositionInvalid": "工具条位置无效"
   }
 }

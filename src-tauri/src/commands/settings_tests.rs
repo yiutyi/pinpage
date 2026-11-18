@@ -36,6 +36,7 @@ fn apply_and_rollback_preserve_all_workspace_fields() {
             locale: "en-US".into(),
             gesture_modifier: after.into(),
             restore_session: false,
+            toolbar_position: String::new(),
         };
         let candidate = WorkspaceSettings::from_input(&input).unwrap();
         apply(&state, &candidate);

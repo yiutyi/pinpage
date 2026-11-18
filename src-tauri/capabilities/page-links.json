@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "page-links",
+  "description": "内容页仅能请求打开外站（系统浏览器）或内部新标签，不具备窗口管理、文件系统或会话读写权限。",
+  "webviews": ["p-*"],
+  "local": true,
+  "remote": {
+    "urls": ["http://*:*", "https://*:*"]
+  },
+  "permissions": ["allow-open-external", "allow-open-tab"]
+}

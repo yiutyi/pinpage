@@ -4,9 +4,12 @@ pub mod navigation;
 use crate::models::PlatformDragModifier;
 use crate::{
     errors::AppMessage,
-    models::{GestureModifier, PinConfig, PlatformCapabilities, PresetFields, WindowMode},
+    models::{
+        GestureModifier, PinConfig, PlatformCapabilities, PresetFields, ToolbarPosition, WindowMode,
+    },
+    state::AppState,
 };
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 #[cfg(windows)]
 mod appearance;
 pub mod autostart;
@@ -22,6 +25,8 @@ mod gestures;
 mod macos_drag;
 #[cfg(windows)]
 pub(crate) use gestures::MenuRequest;
+#[cfg(windows)]
+mod shell;
 pub mod locale;
 #[cfg(windows)]
 mod recovery;
@@ -29,6 +34,54 @@ mod recovery;
 mod rules;
 #[cfg(windows)]
 mod window_policy;
+
+/// 组内窗口共享的几何：x/y 为屏幕物理像素，width/height 为逻辑像素。
+#[derive(Clone, Copy, Debug)]
+pub struct Geometry {
+    pub x: i32,
+    pub y: i32,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// 只同步尺寸与位置，不改动父窗口、边框、圆角或层级规则。
+/// 切标签只对齐几何，避免重设桌面父窗口时与前台切换竞争。
+#[cfg(windows)]
+pub fn apply_geometry(window: &tauri::WebviewWindow, geo: &Geometry) -> Result<(), AppMessage> {
+    window_for_geometry(window, geo)
+}
+
+#[cfg(windows)]
+fn window_for_geometry(window: &tauri::WebviewWindow, geo: &Geometry) -> Result<(), AppMessage> {
+    let window_for_ui = window.clone();
+    let geo = *geo;
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    window
+        .run_on_main_thread(move || {
+            let _ = sender.send(apply_geometry_on_ui(&window_for_ui, &geo));
+        })
+        .map_err(crate::errors::unknown)?;
+    receiver
+        .recv()
+        .map_err(|_| AppMessage::new("errors.taskInterrupted"))?
+}
+
+#[cfg(windows)]
+fn apply_geometry_on_ui(window: &tauri::WebviewWindow, geo: &Geometry) -> Result<(), AppMessage> {
+    use tauri::{LogicalSize, PhysicalPosition};
+    window
+        .set_size(LogicalSize::new(geo.width, geo.height))
+        .map_err(crate::errors::unknown)?;
+    window
+        .set_position(PhysicalPosition::new(geo.x, geo.y))
+        .map_err(crate::errors::unknown)?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn apply_geometry(_window: &tauri::WebviewWindow, _geo: &Geometry) -> Result<(), AppMessage> {
+    Ok(())
+}
 
 /// Windows 完整支持桌面嵌入、圆角、独立几何锁与可配置手势。
 #[cfg(windows)]
@@ -227,6 +280,39 @@ pub fn position(window: &tauri::WebviewWindow) -> Result<tauri::PhysicalPosition
 pub fn start(app: &AppHandle) {
     recovery::start(app);
     gestures::start(app);
+    toolbar_poll::start(app);
+}
+
+/// 工具条显隐轮询：光标位置只读一次，交互期间高频、空闲降频。
+#[cfg(windows)]
+mod toolbar_poll {
+    use crate::{state::AppState, windows};
+    use std::sync::atomic::Ordering;
+    use tauri::{AppHandle, Manager};
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+    /// 启动独立轮询线程，退出标记置位后停止。
+    pub fn start(app: &AppHandle) {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            let mut last: Option<(i32, i32)> = None;
+            loop {
+                if app.state::<AppState>().exiting.load(Ordering::SeqCst) {
+                    break;
+                }
+                let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+                let ok = unsafe { GetCursorPos(&mut point) } != 0;
+                let moved = ok && last != Some((point.x, point.y));
+                last = ok.then_some((point.x, point.y));
+                let (bars, pending) = if ok {
+                    windows::toolbar::auto_visibility(&app, (point.x, point.y))
+                } else {
+                    (windows::toolbar::fallback_visible(&app), false)
+                };
+                std::thread::sleep(windows::toolbar::poll_interval(bars, moved, pending, false));
+            }
+        });
+    }
 }
 
 /// 其他平台保留标准边框移动和托盘恢复入口。
@@ -238,6 +324,210 @@ pub fn start(_app: &AppHandle) {}
 pub fn start(app: &AppHandle) {
     macos_drag::start(app);
 }
+
+/// 桌面映射按钮只执行 Rust 内固定的系统动作，不接收网页给出的命令或路径。
+#[cfg(windows)]
+pub fn desktop_action(action: &str) -> Result<(), AppMessage> {
+    shell::desktop_action(action)
+}
+
+#[cfg(not(windows))]
+pub fn desktop_action(_action: &str) -> Result<(), AppMessage> {
+    Err(AppMessage::new("errors.platformUnsupported"))
+}
+
+/// 读取工具条停靠位置；配置错误或未设置时回退顶部。
+fn toolbar_slot(app: &AppHandle) -> ToolbarPosition {
+    app.state::<AppState>()
+        .settings
+        .lock()
+        .unwrap()
+        .toolbar_position
+}
+
+/// 窗口所在显示器的真实缩放（1.0 表示 96dpi）。
+///
+/// `scale_factor()` 与 `GetDpiForWindow` 在进程被 DPI 虚拟化时返回 96，
+/// 据此换算逻辑尺寸会把窗口设小一半，而 WebView2 仍按真实缩放排版，内容被裁。
+/// 显示器自身的缩放不受窗口虚拟化影响，优先用它。
+pub fn window_scale(window: &tauri::WebviewWindow) -> f64 {
+    window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|monitor| monitor.scale_factor())
+        .or_else(|| window.scale_factor().ok())
+        .unwrap_or(1.)
+}
+
+/// 窗口外框的物理尺寸（含阴影与不可见边框）。
+///
+/// 与 `inner_size()` 的客户区尺寸可能差一截：判断「窗口是否被系统顶宽」要看外框。
+#[cfg(windows)]
+pub fn window_outer_size(window: &tauri::WebviewWindow) -> Option<(u32, u32)> {
+    use windows_sys::Win32::{
+        Foundation::RECT,
+        UI::WindowsAndMessaging::GetWindowRect,
+    };
+    let handle = window.hwnd().ok()?;
+    let mut rect = RECT::default();
+    if unsafe { GetWindowRect(handle.0, &mut rect) } == 0 {
+        return None;
+    }
+    Some((
+        (rect.right - rect.left).max(0) as u32,
+        (rect.bottom - rect.top).max(0) as u32,
+    ))
+}
+
+#[cfg(not(windows))]
+pub fn window_outer_size(_window: &tauri::WebviewWindow) -> Option<(u32, u32)> {
+    None
+}
+
+/// 工具条锚点：由停靠位置决定，坐标为屏幕物理像素。
+#[cfg(windows)]
+pub fn toolbar_position(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+    width: i32,
+    height: i32,
+) -> Option<(i32, i32)> {
+    let (left, top, right, bottom, work) = toolbar_area(window)?;
+    let slot = toolbar_slot(app);
+    let (x, y) = match slot {
+        ToolbarPosition::Top => (
+            left + (right - left - width) / 2,
+            top + 8,
+        ),
+        ToolbarPosition::Left => (
+            left + 8,
+            top + (bottom - top - height) / 2,
+        ),
+        ToolbarPosition::Right => (
+            right - width - 8,
+            top + (bottom - top - height) / 2,
+        ),
+    };
+    // 标签多时工具条可能超过页面宽度，按显示器工作区收边。
+    let (minimum_x, maximum_x) = (work.0, work.2.saturating_sub(width));
+    let (minimum_y, maximum_y) = (work.1, work.3.saturating_sub(height));
+    Some((
+        x.clamp(minimum_x.min(maximum_x), maximum_x.max(minimum_x)),
+        y.clamp(minimum_y.min(maximum_y), maximum_y.max(minimum_y)),
+    ))
+}
+
+#[cfg(not(windows))]
+pub fn toolbar_position(
+    _app: &AppHandle,
+    _window: &tauri::WebviewWindow,
+    _width: i32,
+    _height: i32,
+) -> Option<(i32, i32)> {
+    None
+}
+
+/// 内容窗口客户区的屏幕物理矩形及所在显示器工作区，供定位与热区共用。
+#[cfg(windows)]
+pub fn toolbar_area(window: &tauri::WebviewWindow) -> Option<(i32, i32, i32, i32, (i32, i32, i32, i32))> {
+    use windows_sys::Win32::{
+        Foundation::{POINT, RECT},
+        Graphics::Gdi::ClientToScreen,
+        UI::WindowsAndMessaging::GetClientRect,
+    };
+    let hwnd = window.hwnd().ok()?.0;
+    let mut area = RECT::default();
+    unsafe {
+        if GetClientRect(hwnd, &mut area) == 0 {
+            return None;
+        }
+        let mut origin = POINT {
+            x: area.left,
+            y: area.top,
+        };
+        if ClientToScreen(hwnd, &mut origin) == 0 {
+            return None;
+        }
+        let work = window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .map(|monitor| {
+                let value = monitor.work_area();
+                (
+                    value.position.x,
+                    value.position.y,
+                    value.position.x + value.size.width as i32,
+                    value.position.y + value.size.height as i32,
+                )
+            })
+            .unwrap_or((i32::MIN, i32::MIN, i32::MAX, i32::MAX));
+        Some((
+            origin.x,
+            origin.y,
+            origin.x + (area.right - area.left),
+            origin.y + (area.bottom - area.top),
+            work,
+        ))
+    }
+}
+
+#[cfg(not(windows))]
+pub fn toolbar_area(_window: &tauri::WebviewWindow) -> Option<(i32, i32, i32, i32, (i32, i32, i32, i32))> {
+    None
+}
+
+/// 工具条热区矩形：顶部为横条，左右侧为竖条，宽度 12 物理像素。
+pub fn toolbar_hot_zone(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+) -> Option<(i32, i32, i32, i32)> {
+    const HOT_ZONE: i32 = 12;
+    let (left, top, right, bottom, _) = toolbar_area(window)?;
+    Some(match toolbar_slot(app) {
+        ToolbarPosition::Top => (left, top, right, top + HOT_ZONE),
+        ToolbarPosition::Left => (left, top, left + HOT_ZONE, bottom),
+        ToolbarPosition::Right => (right - HOT_ZONE, top, right, bottom),
+    })
+}
+
+/// 当前停靠位置，供前端首帧决定竖排布局与唤出按钮。
+pub fn toolbar_position_kind(app: &AppHandle) -> ToolbarPosition {
+    toolbar_slot(app)
+}
+
+/// 把工具条压回唤出页面上方；两者同属置顶层，页面取焦点后会盖住按钮。
+#[cfg(windows)]
+pub fn raise_above(window: &tauri::WebviewWindow, bar: &tauri::WebviewWindow) {
+    match (window.hwnd(), bar.hwnd()) {
+        (Ok(page), Ok(bar)) if !desktop::above(page.0, bar.0) => desktop::raise(bar.0),
+        _ => {}
+    }
+}
+
+#[cfg(not(windows))]
+pub fn raise_above(_window: &tauri::WebviewWindow, _bar: &tauri::WebviewWindow) {}
+
+/// 当前系统前台窗口句柄；0 表示没有可用窗口。
+#[cfg(windows)]
+pub fn foreground_window() -> isize {
+    desktop::foreground()
+}
+
+#[cfg(not(windows))]
+pub fn foreground_window() -> isize {
+    0
+}
+
+/// 收回桌面后把先前的前台窗口调回前台。
+#[cfg(windows)]
+pub fn restore_foreground(window: isize) {
+    desktop::restore_foreground(window)
+}
+
+#[cfg(not(windows))]
+pub fn restore_foreground(_window: isize) {}
 
 /// 全局设置持久化成功后更新两种手势共用的修饰键。
 pub fn set_gesture_modifier(modifier: GestureModifier) {

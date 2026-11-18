@@ -144,10 +144,13 @@ export interface PinRuntime {
   error: AppMessage | null;
 }
 
+export type ToolbarPosition = 'top' | 'left' | 'right';
+
 export interface SettingsInput {
   locale: LocalePreference;
   gestureModifier: GestureModifier;
   restoreSession: boolean;
+  toolbarPosition: ToolbarPosition;
 }
 
 export interface Settings extends SettingsInput {

@@ -21,5 +21,14 @@ export default defineConfig({
     strictPort: true,
     watch: { ignored: ['**/src-tauri/**', '**/runtime-data/**'] },
   },
-  build: { target: 'es2022' },
+  build: {
+    target: 'es2022',
+    // 管理界面与工具条是独立 WebView，分别声明入口，避免构建时互相覆盖。
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        toolbar: fileURLToPath(new URL('./toolbar.html', import.meta.url)),
+      },
+    },
+  },
 });

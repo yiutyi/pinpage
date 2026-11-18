@@ -60,6 +60,23 @@ pub enum WindowMode {
     Desktop,
 }
 
+impl WindowMode {
+    /// 桌面模式需要挂到 Explorer 宿主；保留方法供工具条与标签逻辑共用。
+    pub fn is_desktop(self) -> bool {
+        matches!(self, Self::Desktop)
+    }
+}
+
+/// 工具条相对内容窗口的停靠位置；配置对所有页面统一生效。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolbarPosition {
+    #[default]
+    Top,
+    Left,
+    Right,
+}
+
 /// 旧版本没有开关字段时，原有页面保持开启状态。
 fn default_enabled() -> bool {
     true

@@ -158,6 +158,58 @@ pub fn place(window: HWND, x: i32, y: i32) -> Result<(), AppMessage> {
     Ok(())
 }
 
+/// 把窗口提到置顶层最前，但不改变焦点与几何。
+pub fn raise(window: HWND) {
+    unsafe {
+        SetWindowPos(
+            window,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+        );
+    }
+}
+
+/// window 是否位于 target 之上；沿 z 序向上查找有限层，避免异常链表死循环。
+pub fn above(target: HWND, window: HWND) -> bool {
+    let mut current = unsafe { GetWindow(target, GW_HWNDPREV) };
+    for _ in 0..64 {
+        if current.is_null() {
+            return false;
+        }
+        if current == window {
+            return true;
+        }
+        current = unsafe { GetWindow(current, GW_HWNDPREV) };
+    }
+    false
+}
+
+/// 当前系统前台窗口句柄；没有前台窗口时返回 0。
+pub fn foreground() -> isize {
+    unsafe { GetForegroundWindow() as isize }
+}
+
+/// 把先前的前台窗口调回前台；前台权限不足时静默跳过。
+pub fn restore_foreground(window: isize) {
+    if window == 0 {
+        return;
+    }
+    unsafe {
+        let handle = window as HWND;
+        if IsWindow(handle) == 0 {
+            return;
+        }
+        if IsIconic(handle) != 0 {
+            ShowWindow(handle, SW_RESTORE);
+        }
+        SetForegroundWindow(handle);
+    }
+}
+
 /// 子窗口使用父坐标，顶层拥有窗口保留屏幕坐标，供几何锁保存锚点。
 pub unsafe fn parent_rect(window: HWND) -> RECT {
     let mut rect = RECT::default();

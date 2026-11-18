@@ -4,6 +4,7 @@ use crate::{
     i18n,
     import::ImportGrant,
     models::{AppLocale, PinRuntime, Settings, Snapshot},
+    platform::Geometry,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -12,13 +13,84 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex,
     },
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter, Manager};
+
+/// 工具条自动显隐的宽限期：光标进入热区或悬停后继续显示这么久。
+pub const TOOLBAR_GRACE: Duration = Duration::from_secs(2);
+
+/// 工具条的用户意图与临时门闩，三个字段各有唯一写入方，彼此不覆盖。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ToolbarState {
+    pub pinned: bool,
+    pub dismissed: bool,
+    pub hold: bool,
+}
+
+/// 工具条运行时状态，按磁贴（标签组）ID 存一份，不写入会话配置。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ToolbarRuntime {
+    pub state: ToolbarState,
+    pub grace_until: Option<Instant>,
+    pub visible: bool,
+}
+
+impl ToolbarRuntime {
+    /// 只替换用户意图，保留宽限期与上一帧显隐。
+    pub fn with_state(self, next: ToolbarState) -> Self {
+        Self {
+            state: next,
+            ..self
+        }
+    }
+
+    /// 页面关闭时只清临时状态，用户的图钉偏好保留到下次开启。
+    pub fn reset_transient(self) -> Self {
+        Self {
+            state: ToolbarState {
+                pinned: self.state.pinned,
+                ..Default::default()
+            },
+            grace_until: None,
+            visible: false,
+        }
+    }
+}
+
+/// 标签组里的一个标签：窗口标签用于原生操作，标题用于工具条显示。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TabEntry {
+    pub window: String,
+    pub title: String,
+}
+
+/// 一个磁贴的标签组；首页窗口始终排在第一位，只存在于本次运行。
+#[derive(Clone, Debug)]
+pub struct TabGroup {
+    pub tabs: Vec<TabEntry>,
+    pub active: String,
+    pub next: usize,
+    pub geometry: Option<Geometry>,
+}
+
+/// 前台唤出状态：只记录被临时抬起的页面与唤出前的前台窗口。
+#[derive(Default)]
+pub struct LiftState {
+    pub previous: isize,
+    pub pages: HashMap<String, String>,
+}
 
 pub struct AppState {
     pub operation: Mutex<()>,
     pub settings: Mutex<Settings>,
     pub runtime: Mutex<HashMap<String, PinRuntime>>,
+    /// 每个标签组一份工具条运行时状态，不写入会话配置。
+    pub toolbars: Mutex<HashMap<String, ToolbarRuntime>>,
+    /// 各磁贴的标签组，只在本次运行有效。
+    pub tabs: Mutex<HashMap<String, TabGroup>>,
+    /// 前台唤出状态，只在本次运行有效。
+    pub lift: Mutex<LiftState>,
     /// WebView2 外观脚本的注册 ID；关闭窗口后清理，不写入配置。
     #[cfg(windows)]
     pub appearances: Mutex<HashMap<String, (bool, crate::models::WindowMode, String)>>,
@@ -134,6 +206,9 @@ impl AppState {
             appearances: Mutex::new(HashMap::new()),
             settings: Mutex::new(settings),
             runtime: Mutex::new(HashMap::new()),
+            toolbars: Mutex::new(HashMap::new()),
+            tabs: Mutex::new(HashMap::new()),
+            lift: Mutex::new(LiftState::default()),
             grants: Mutex::new(HashMap::new()),
             export_pending: Mutex::new(HashSet::new()),
             pending_pin_settings: Mutex::new(None),
@@ -333,4 +408,86 @@ pub fn locale(app: &AppHandle) -> AppLocale {
 /// 写入新的有效语言；调用方负责随后的原生界面刷新。
 pub fn set_locale(app: &AppHandle, next: AppLocale) {
     *app.state::<AppState>().locale.lock().unwrap() = next;
+}
+
+/// 读取标签组的工具条意图；从未操作过的组使用未固定、未收起的默认值。
+pub fn toolbar_state(app: &AppHandle, group: &str) -> ToolbarState {
+    app.state::<AppState>()
+        .toolbars
+        .lock()
+        .unwrap()
+        .get(group)
+        .map(|runtime| runtime.state)
+        .unwrap_or_default()
+}
+
+/// 只改写意图字段；宽限期与显隐由轮询独立维护。
+pub fn set_toolbar_state(app: &AppHandle, group: &str, next: ToolbarState) {
+    let state = app.state::<AppState>();
+    let mut toolbars = state.toolbars.lock().unwrap();
+    let runtime = toolbars.entry(group.into()).or_default();
+    *runtime = runtime.with_state(next);
+}
+
+/// 读取整份运行时状态，供显隐轮询决策。
+pub fn toolbar_runtime(app: &AppHandle, group: &str) -> ToolbarRuntime {
+    app.state::<AppState>()
+        .toolbars
+        .lock()
+        .unwrap()
+        .get(group)
+        .copied()
+        .unwrap_or_default()
+}
+
+/// 写回整份运行时状态；调用方持有同一组的最新快照。
+pub fn set_toolbar_runtime(app: &AppHandle, group: &str, next: ToolbarRuntime) {
+    app.state::<AppState>()
+        .toolbars
+        .lock()
+        .unwrap()
+        .insert(group.into(), next);
+}
+
+/// 刷新自动显示宽限期：建窗、热区唤出与悬停共用。
+pub fn touch_toolbar_grace(app: &AppHandle, group: &str) {
+    let state = app.state::<AppState>();
+    let mut toolbars = state.toolbars.lock().unwrap();
+    toolbars.entry(group.into()).or_default().grace_until = Some(Instant::now() + TOOLBAR_GRACE);
+}
+
+/// 结束自动显示宽限期：主动收起或收回桌面后立即回到常驻策略。
+pub fn clear_toolbar_grace(app: &AppHandle, group: &str) {
+    if let Some(runtime) = app
+        .state::<AppState>()
+        .toolbars
+        .lock()
+        .unwrap()
+        .get_mut(group)
+    {
+        runtime.grace_until = None;
+    }
+}
+
+/// 页面关闭时只重置临时门闩与倒计时，保留用户的图钉偏好。
+pub fn reset_toolbar_runtime(app: &AppHandle, group: &str) {
+    if let Some(runtime) = app
+        .state::<AppState>()
+        .toolbars
+        .lock()
+        .unwrap()
+        .get_mut(group)
+    {
+        let current = *runtime;
+        *runtime = current.reset_transient();
+    }
+}
+
+/// 删除磁贴时彻底清理工具条状态。
+pub fn clear_toolbar_state(app: &AppHandle, group: &str) {
+    app.state::<AppState>()
+        .toolbars
+        .lock()
+        .unwrap()
+        .remove(group);
 }

@@ -1,6 +1,9 @@
 // 功能：提供经过管理窗口身份校验的 IPC 命令入口，并协调窗口创建与状态通知。
 pub mod automation;
 pub mod editor;
+pub mod external;
+pub mod tabs;
+pub mod toolbar;
 pub mod folder;
 pub mod host;
 pub mod session;

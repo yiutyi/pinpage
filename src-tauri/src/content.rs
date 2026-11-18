@@ -100,6 +100,63 @@ pub fn navigation_allowed(id: &str, source: &PageSource, url: &Url) -> bool {
     }
 }
 
+/// 判断主机是否属于本机或局域网；与导航注入脚本的 isLocalHost 规则一致。
+pub fn is_local_host(host: &str) -> bool {
+    let host = host.trim_matches(['[', ']']).to_ascii_lowercase();
+    if host.is_empty() {
+        return false;
+    }
+    if host == "localhost" || host.ends_with(".localhost") || host == "::1" {
+        return true;
+    }
+    if host.contains(':') {
+        return ["fc", "fd", "fe8", "fe9", "fea", "feb"]
+            .iter()
+            .any(|prefix| host.starts_with(prefix));
+    }
+    if !host.contains('.') {
+        return true;
+    }
+    let parts: Vec<&str> = host.split('.').collect();
+    if parts.len() != 4 {
+        return false;
+    }
+    let numbers: Option<Vec<u8>> = parts.iter().map(|part| part.parse::<u8>().ok()).collect();
+    let Some(numbers) = numbers else {
+        return false;
+    };
+    let (first, second) = (numbers[0], numbers[1]);
+    first == 127
+        || first == 10
+        || (first == 192 && second == 168)
+        || (first == 172 && (16..=31).contains(&second))
+        || (first == 169 && second == 254)
+}
+
+/// 允许交给系统默认浏览器的外部链接；拒绝应用内部来源与内嵌凭据。
+pub fn external_url(url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https")
+        && url.username().is_empty()
+        && url.password().is_none()
+        && !url.host_str().unwrap_or("").starts_with("pinpage.")
+}
+
+/// 本机或局域网地址：内容页点击这类链接时在应用内打开新标签。
+pub fn is_local_url(url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https")
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.host_str().is_some_and(is_local_host)
+}
+
+/// 同一主机（忽略端口、路径与协议），允许门户页把同站子页面开成标签。
+pub fn same_host(left: &Url, right: &Url) -> bool {
+    matches!(
+        (left.host_str(), right.host_str()),
+        (Some(a), Some(b)) if a.eq_ignore_ascii_case(b)
+    )
+}
+
 /// 内容页独立 CSP：允许同源、IPC 与 https 出站，脚本默认仅同源。
 /// 引导页由应用生成且含内联脚本，单独放行；管理界面 CSP 不受影响。
 fn content_csp(restore: bool) -> &'static str {

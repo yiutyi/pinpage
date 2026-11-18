@@ -29,6 +29,8 @@ pub fn action(app: &AppHandle, id: &str, action: &str) -> Result<(), AppMessage>
     if let Some(preset) = action.strip_prefix("preset:") {
         return super::presets::apply(app, &previous, preset);
     }
+    // 磁贴可能有多个标签，关闭与显隐作用于当前活动的窗口。
+    let active = super::tabs::active_window(app, id);
     match action {
         "open" | "reopen" => {
             super::open_pin(app, &previous)?;
@@ -52,6 +54,8 @@ pub fn action(app: &AppHandle, id: &str, action: &str) -> Result<(), AppMessage>
             }
         }
         "close" | "delete" => {
+            // 关闭磁贴时连同标签一起销毁，避免留下看不见的隐藏窗口。
+            super::tabs::destroy_group(app, id);
             let before = state.settings.lock().unwrap().clone();
             if let Some(pin) = state
                 .settings
@@ -86,6 +90,8 @@ pub fn action(app: &AppHandle, id: &str, action: &str) -> Result<(), AppMessage>
                 }
             }
             if action == "delete" {
+                // 删除磁贴才清除工具条图钉偏好；关闭页面会保留。
+                super::toolbar::forget(app, id);
                 state
                     .settings
                     .lock()
@@ -163,7 +169,7 @@ pub fn action(app: &AppHandle, id: &str, action: &str) -> Result<(), AppMessage>
         }
         _ => {
             let window = app
-                .get_webview_window(id)
+                .get_webview_window(&active)
                 .ok_or_else(|| AppMessage::new("errors.pageClosed"))?;
             match action {
                 "focus" => {
@@ -177,14 +183,20 @@ pub fn action(app: &AppHandle, id: &str, action: &str) -> Result<(), AppMessage>
                     if previous.mode == WindowMode::Floating {
                         window.set_focus().map_err(window_failed)?;
                     }
+                    super::toolbar::set_visible(app, id, true);
                 }
                 "visibility" => {
-                    if window.is_visible().map_err(window_failed)? {
+                    let was_visible = window.is_visible().map_err(window_failed)?;
+                    if was_visible {
+                        super::lift::forget(app, id);
+                    }
+                    if was_visible {
                         window.hide()
                     } else {
                         window.show()
                     }
                     .map_err(window_failed)?;
+                    super::toolbar::set_visible(app, id, !was_visible);
                 }
                 "minimize" => window.minimize().map_err(window_failed)?,
                 "hide" => window.hide().map_err(window_failed)?,
